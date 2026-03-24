@@ -1,9 +1,12 @@
 """
-Depth estimation using MiDaS.
+Depth estimation using Depth Anything V2.
 
 Provides two quality tiers:
-- Preview: DPT-Small (fast, ~5-10s on CPU)
-- Final: DPT-Large (high quality, ~30-60s on CPU)
+- Preview: Depth-Anything-V2-Small (fast, ~4s on CPU)
+- Final: Depth-Anything-V2-Base (higher quality, ~8s on CPU)
+
+Depth Anything V2 produces dramatically better facial feature detail
+than MiDaS — visible nose, eye sockets, mouth, jawline out of the box.
 
 Output is a normalized depth map where higher values = closer to camera.
 """
@@ -11,41 +14,34 @@ Output is a normalized depth map where higher values = closer to camera.
 import numpy as np
 import torch
 from PIL import Image
+from scipy import ndimage
 
 
 class DepthEstimator:
-    """Monocular depth estimation using MiDaS v3.1."""
+    """Monocular depth estimation using Depth Anything V2."""
 
-    # Model configs: name -> (model_type, transform_key)
-    # DPT_Hybrid is a good balance of speed vs quality for preview
-    # DPT_Large is the highest quality single-image depth model
     MODELS = {
-        "preview": ("DPT_Hybrid", "dpt_transform"),
-        "final": ("DPT_Large", "dpt_transform"),
+        "preview": "depth-anything/Depth-Anything-V2-Small-hf",
+        "final": "depth-anything/Depth-Anything-V2-Base-hf",
     }
 
     def __init__(self):
-        self._models: dict = {}
-        self._transforms: dict = {}
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._pipes: dict = {}
+        self._device = -1  # CPU; use 0 for CUDA
 
     def _load_model(self, quality: str):
-        """Lazy-load a MiDaS model on first use."""
-        if quality in self._models:
+        """Lazy-load model on first use."""
+        if quality in self._pipes:
             return
 
-        model_type = self.MODELS[quality][0]
+        from transformers import pipeline
 
-        model = torch.hub.load("intel-isl/MiDaS", model_type, trust_repo=True)
-        model.to(self._device)
-        model.eval()
-        self._models[quality] = model
-
-        midas_transforms = torch.hub.load(
-            "intel-isl/MiDaS", "transforms", trust_repo=True
+        model_id = self.MODELS[quality]
+        self._pipes[quality] = pipeline(
+            task="depth-estimation",
+            model=model_id,
+            device=self._device,
         )
-        transform_key = self.MODELS[quality][1]
-        self._transforms[quality] = getattr(midas_transforms, transform_key)
 
     def estimate(
         self,
@@ -60,12 +56,10 @@ class DepthEstimator:
             image: PIL Image (RGB)
             quality: "preview" (fast) or "final" (high quality)
             target_size: Optional max dimension to resize input before processing.
-                         Smaller = faster. None = use model's default.
 
         Returns:
             Normalized depth map as numpy array (float32, 0-1 range).
             Higher values = closer to camera (foreground).
-            Same aspect ratio as input, but resolution may differ.
         """
         if quality not in self.MODELS:
             raise ValueError(f"Quality must be one of: {list(self.MODELS.keys())}")
@@ -80,31 +74,16 @@ class DepthEstimator:
             if scale < 1.0:
                 img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
-        # Convert to numpy RGB
-        img_np = np.array(img)
-
-        # Apply MiDaS transform
-        transform = self._transforms[quality]
-        input_batch = transform(img_np).to(self._device)
-
         # Run inference
-        with torch.no_grad():
-            prediction = self._models[quality](input_batch)
+        result = self._pipes[quality](img)
+        depth = np.array(result["depth"], dtype=np.float32)
 
-            # Interpolate to original image size
-            prediction = torch.nn.functional.interpolate(
-                prediction.unsqueeze(1),
-                size=img_np.shape[:2],
-                mode="bicubic",
-                align_corners=False,
-            ).squeeze()
-
-        depth = prediction.cpu().numpy()
-
-        # Normalize to 0-1 range (invert so closer = higher)
+        # Normalize to 0-1 range
         depth = depth - depth.min()
         max_val = depth.max()
         if max_val > 0:
             depth = depth / max_val
 
+        # Depth Anything outputs "disparity" where closer=higher, which is
+        # what we want (foreground = higher values)
         return depth.astype(np.float32)
