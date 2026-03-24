@@ -34,15 +34,15 @@ def get_pipeline() -> PortraitPipeline:
 
 
 def _parse_refinement_params(
-    feature_strength: float = 0.8,
-    eye_depth: float = 0.4,
-    nose_projection: float = 0.85,
-    mouth_depth: float = 0.5,
-    forehead_roundness: float = 0.6,
-    cheek_volume: float = 0.6,
-    jaw_definition: float = 0.6,
-    detail_level: float = 0.5,
-    smoothing: float = 0.3,
+    feature_strength: float = 0.9,
+    eye_depth: float = 0.6,
+    nose_projection: float = 0.95,
+    mouth_depth: float = 0.6,
+    forehead_roundness: float = 0.75,
+    cheek_volume: float = 0.75,
+    jaw_definition: float = 0.7,
+    detail_level: float = 0.25,
+    smoothing: float = 0.7,
 ) -> RefinementParams:
     return RefinementParams(
         feature_strength=feature_strength,
@@ -58,8 +58,8 @@ def _parse_refinement_params(
 
 
 def _parse_relief_params(
-    max_depth_mm: float = 6.0,
-    style: str = "classical",
+    max_depth_mm: float = 8.0,
+    style: str = "roman",
     output_width_mm: float = 150.0,
     base_thickness_mm: float = 2.0,
     vignette: bool = True,
@@ -86,15 +86,15 @@ async def health_check():
 async def generate_preview(
     file: UploadFile = File(...),
     # Refinement params
-    feature_strength: float = Form(0.8),
-    eye_depth: float = Form(0.4),
-    nose_projection: float = Form(0.85),
-    mouth_depth: float = Form(0.5),
-    detail_level: float = Form(0.5),
-    smoothing: float = Form(0.3),
+    feature_strength: float = Form(0.9),
+    eye_depth: float = Form(0.6),
+    nose_projection: float = Form(0.95),
+    mouth_depth: float = Form(0.6),
+    detail_level: float = Form(0.25),
+    smoothing: float = Form(0.7),
     # Relief params
-    max_depth_mm: float = Form(6.0),
-    style: str = Form("classical"),
+    max_depth_mm: float = Form(8.0),
+    style: str = Form("roman"),
     vignette: bool = Form(True),
     remove_background: bool = Form(True),
 ):
@@ -166,22 +166,22 @@ async def generate_stl(
     file: UploadFile = File(...),
     quality: str = Form("final"),
     # Refinement params
-    feature_strength: float = Form(0.8),
-    eye_depth: float = Form(0.4),
-    nose_projection: float = Form(0.85),
-    mouth_depth: float = Form(0.5),
-    forehead_roundness: float = Form(0.6),
-    cheek_volume: float = Form(0.6),
-    jaw_definition: float = Form(0.6),
-    detail_level: float = Form(0.5),
-    smoothing: float = Form(0.3),
+    feature_strength: float = Form(0.9),
+    eye_depth: float = Form(0.6),
+    nose_projection: float = Form(0.95),
+    mouth_depth: float = Form(0.6),
+    forehead_roundness: float = Form(0.75),
+    cheek_volume: float = Form(0.75),
+    jaw_definition: float = Form(0.7),
+    detail_level: float = Form(0.25),
+    smoothing: float = Form(0.7),
     # Relief params
-    max_depth_mm: float = Form(6.0),
-    style: str = Form("classical"),
+    max_depth_mm: float = Form(8.0),
+    style: str = Form("roman"),
     output_width_mm: float = Form(150.0),
     base_thickness_mm: float = Form(2.0),
     vignette: bool = Form(True),
-    vignette_strength: float = Form(0.7),
+    vignette_strength: float = Form(0.8),
     invert: bool = Form(False),
     remove_background: bool = Form(True),
     # Mesh params
@@ -252,12 +252,12 @@ async def get_depth_map(
     quality: str = Form("preview"),
     remove_background: bool = Form(True),
     # Refinement params
-    feature_strength: float = Form(0.8),
-    eye_depth: float = Form(0.4),
-    nose_projection: float = Form(0.85),
-    mouth_depth: float = Form(0.5),
-    detail_level: float = Form(0.5),
-    smoothing: float = Form(0.3),
+    feature_strength: float = Form(0.9),
+    eye_depth: float = Form(0.6),
+    nose_projection: float = Form(0.95),
+    mouth_depth: float = Form(0.6),
+    detail_level: float = Form(0.25),
+    smoothing: float = Form(0.7),
 ):
     """Return the refined depth map as a PNG image."""
     try:

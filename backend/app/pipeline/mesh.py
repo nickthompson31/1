@@ -62,9 +62,9 @@ class MeshGenerator:
             )
             h_px, w_px = relief_map.shape
 
-        # Light smoothing to prevent jagged surfaces at lower resolutions
+        # Smoothing for clean, sculpted surface appearance
         if smooth_normals:
-            relief_map = ndimage.gaussian_filter(relief_map, sigma=0.5)
+            relief_map = ndimage.gaussian_filter(relief_map, sigma=1.0)
 
         # Create vertex grid
         vertices, top_faces = self._create_top_surface(

@@ -41,25 +41,25 @@ def main():
     )
     parser.add_argument(
         "--style",
-        choices=["classical", "dramatic", "subtle", "coin"],
-        default="classical",
-        help="Relief style preset (default: classical)",
+        choices=["classical", "roman", "dramatic", "subtle", "coin"],
+        default="roman",
+        help="Relief style preset (default: roman)",
     )
     parser.add_argument(
-        "--depth", type=float, default=6.0,
-        help="Maximum relief depth in mm (default: 6.0)",
+        "--depth", type=float, default=8.0,
+        help="Maximum relief depth in mm (default: 8.0)",
     )
     parser.add_argument(
         "--width", type=float, default=150.0,
         help="Output width in mm (default: 150.0 / ~6 inches)",
     )
     parser.add_argument(
-        "--eye-depth", type=float, default=0.3,
-        help="Eye socket depth 0-1, lower=less creepy (default: 0.3)",
+        "--eye-depth", type=float, default=0.6,
+        help="Eye socket depth 0-1 (default: 0.6)",
     )
     parser.add_argument(
-        "--detail", type=float, default=0.6,
-        help="Detail preservation 0-1 (default: 0.6)",
+        "--detail", type=float, default=0.25,
+        help="Detail preservation 0-1, lower=smoother classical look (default: 0.25)",
     )
     parser.add_argument(
         "--no-bg-remove", action="store_true",

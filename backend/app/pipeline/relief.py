@@ -24,6 +24,7 @@ class ReliefStyle(str, Enum):
     """Pre-defined artistic relief styles."""
 
     CLASSICAL = "classical"  # Traditional portrait relief, balanced depth
+    ROMAN = "roman"  # Beautiful Roman sculpture aesthetic — smooth, bold, dramatic
     DRAMATIC = "dramatic"  # High contrast, deep shadows
     SUBTLE = "subtle"  # Gentle, low relief — good for large pieces
     COIN = "coin"  # Very shallow, coin/medallion style
@@ -34,20 +35,20 @@ class ReliefParams:
     """Parameters controlling the relief curve and output."""
 
     # Maximum relief depth in mm (physical carving depth)
-    max_depth_mm: float = 6.0
+    max_depth_mm: float = 8.0
 
     # Relief style preset
-    style: ReliefStyle = ReliefStyle.CLASSICAL
+    style: ReliefStyle = ReliefStyle.ROMAN
 
     # Curve gamma: <1.0 = expand highlights (more face detail),
     # >1.0 = expand shadows (more background detail)
-    gamma: float = 0.65
+    gamma: float = 0.50
 
     # Mid-tone expansion: how much to stretch the middle depth range
-    midtone_boost: float = 1.3
+    midtone_boost: float = 1.5
 
     # Background compression: how aggressively to flatten the background
-    background_compression: float = 0.7
+    background_compression: float = 0.85
 
     # Border/frame options
     add_border: bool = False
@@ -72,16 +73,22 @@ class ReliefParams:
 # Style presets — tuned to work with the enhanced depth maps
 STYLE_PRESETS = {
     ReliefStyle.CLASSICAL: {
-        "gamma": 0.65,
-        "midtone_boost": 1.3,
-        "background_compression": 0.7,
-        "max_depth_mm": 6.0,
+        "gamma": 0.55,
+        "midtone_boost": 1.45,
+        "background_compression": 0.8,
+        "max_depth_mm": 7.0,
     },
-    ReliefStyle.DRAMATIC: {
-        "gamma": 0.5,
-        "midtone_boost": 1.6,
+    ReliefStyle.ROMAN: {
+        "gamma": 0.50,
+        "midtone_boost": 1.5,
         "background_compression": 0.85,
         "max_depth_mm": 8.0,
+    },
+    ReliefStyle.DRAMATIC: {
+        "gamma": 0.45,
+        "midtone_boost": 1.7,
+        "background_compression": 0.9,
+        "max_depth_mm": 9.0,
     },
     ReliefStyle.SUBTLE: {
         "gamma": 0.75,
@@ -120,15 +127,19 @@ class ReliefMapper:
         # Step 1: Apply the artistic transfer curve
         relief = self._apply_transfer_curve(relief, gamma, midtone_boost, bg_compression)
 
-        # Step 2: Apply vignette if requested
+        # Step 2: Final surface smoothing — ensures clean, sculpted appearance
+        # This catches any remaining texture artifacts the refiner didn't smooth
+        relief = ndimage.gaussian_filter(relief, sigma=0.8)
+
+        # Step 3: Apply vignette if requested
         if params.vignette:
             relief = self._apply_vignette(relief, params.vignette_strength)
 
-        # Step 3: Invert if requested
+        # Step 4: Invert if requested
         if params.invert:
             relief = 1.0 - relief
 
-        # Step 4: Scale to physical depth (mm)
+        # Step 5: Scale to physical depth (mm)
         relief = relief * max_depth
 
         return relief.astype(np.float32)
