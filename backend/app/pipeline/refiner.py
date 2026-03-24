@@ -82,40 +82,39 @@ class DepthRefiner:
         for face in faces:
             face_mask = np.maximum(face_mask, face.region_masks.combined)
 
-        # Step 1: Create geometric face sculpture from landmarks
-        sculpture = self._build_face_sculpture(depth_map, faces, params)
-
         # Wider soft mask for smoother transitions (classical sculpture has no hard edges)
         face_mask_soft = ndimage.gaussian_filter(face_mask, sigma=15)
         face_mask_soft = np.clip(face_mask_soft, 0, 1)
 
-        # Step 2: Decompose AI depth into low-freq shape + high-freq detail
-        # Use a wider sigma to separate structure from texture more aggressively
+        # === APPROACH: Smooth stone base + crisp sculpted features ===
+        # Like a real sculptor: start with a smooth block, then carve features.
+
+        # Step 1: Create a smooth AI base (remove texture, keep structure)
         ai_low = ndimage.gaussian_filter(depth_map, sigma=8.0)
         ai_detail = depth_map - ai_low
+        # Marble-smooth the detail layer to kill skin texture
+        smoothed_detail = self._marble_smooth(ai_detail, face_mask_soft, params.smoothing)
+        detail_strength = 0.15 + params.detail_level * 0.7
+        smooth_base = ai_low + smoothed_detail * detail_strength
 
-        # Step 3: Decompose sculpture similarly
-        sculpt_low = ndimage.gaussian_filter(sculpture, sigma=8.0)
+        # Step 2: Build geometric face sculpture
+        # _build_face_sculpture returns depth_map + sculpted features
+        sculpture = self._build_face_sculpture(depth_map, faces, params)
+        # Extract JUST the sculpted additions (nose, brow, sockets, etc.)
+        sculpt_additions = sculpture - depth_map
+        # Light smoothing for graceful transitions, but keep features CRISP
+        sculpt_additions = ndimage.gaussian_filter(sculpt_additions, sigma=2.0)
 
-        # Step 4: Blend sculpture structure with AI structure
-        # Higher blend ratio = more sculptural, less photographic
-        blend = params.feature_strength * 0.85
-        combined_low = ai_low * (1 - face_mask_soft * blend) + sculpt_low * face_mask_soft * blend
+        # Step 3: Apply sculpted features directly onto the smooth base
+        # This is the key — features go on AFTER smoothing, so they survive
+        blend = params.feature_strength * 0.9
+        refined = smooth_base + sculpt_additions * face_mask_soft * blend
 
-        # Step 5: Add back REDUCED AI detail — classical sculpture is smooth, not textured
-        # detail_level=0.25 (default) gives just enough to preserve likeness
-        detail_strength = 0.15 + params.detail_level * 0.7  # 0.15-0.85x (much less than before)
-        refined = combined_low + ai_detail * detail_strength
-
-        # Step 6: Progressive smoothing for marble-like surface
-        # This is the key to the classical look — multiple passes at different scales
-        refined = self._marble_smooth(refined, face_mask_soft, params.smoothing)
-
-        # Step 7: Smooth background aggressively
+        # Step 4: Smooth background aggressively
         bg_smoothed = ndimage.gaussian_filter(refined, sigma=params.background_smoothing)
         refined = refined * face_mask_soft + bg_smoothed * (1 - face_mask_soft)
 
-        # Step 8: Redistribute face depth for dramatic projection
+        # Step 5: Redistribute face depth for dramatic projection
         refined = self._redistribute_face_depth(refined, faces)
 
         return self._normalize(refined)
@@ -188,13 +187,10 @@ class DepthRefiner:
             h, w = depth_map.shape
 
             # --- FACE DOME: Bold convex projection ---
-            # Classical reliefs have a strong, smooth dome that projects the entire
-            # face well above the background plane
             face_dome = ndimage.gaussian_filter(masks.face_outline, sigma=30)
             face_dome = face_dome / max(face_dome.max(), 1e-6)
-            # Broader, rounder dome shape — like a head seen from the front
             face_dome = face_dome ** 0.6
-            dome_height = 0.22 * params.feature_strength
+            dome_height = 0.28 * params.feature_strength
             sculpture = sculpture + face_dome * dome_height
 
             # --- NOSE: Strong continuous bridge (the Roman nose) ---
@@ -240,7 +236,7 @@ class DepthRefiner:
             # Classical sculpture has clearly defined orbital rims, not just
             # holes — the eye sits in a smooth, bowl-shaped depression with
             # a pronounced ridge above
-            eye_recess = 0.05 + 0.08 * params.eye_depth  # 0.05-0.13
+            eye_recess = 0.08 + 0.14 * params.eye_depth  # 0.08-0.22
             for eye_indices_name in ["left_eye", "right_eye"]:
                 eye_mask = getattr(masks, eye_indices_name)
                 if eye_mask.sum() < 10:
@@ -268,13 +264,13 @@ class DepthRefiner:
                 brow_cy = eye_cy - eye_ry * 1.5
                 brow_dist = ((xx - eye_cx) / max(eye_rx * 1.8, 1)) ** 2 + \
                             ((yy - brow_cy) / max(eye_ry * 0.7, 1)) ** 2
-                brow = np.exp(-brow_dist * 1.6) * eye_recess * 1.1
+                brow = np.exp(-brow_dist * 1.6) * eye_recess * 1.4
                 sculpture = sculpture + brow
 
-                # Subtle orbital rim — a slight ridge around the socket
+                # Orbital rim — ridge around the socket
                 rim_dist = ((xx - eye_cx) / max(eye_rx * 1.5, 1)) ** 2 + \
                            ((yy - eye_cy) / max(eye_ry * 1.4, 1)) ** 2
-                rim_ring = np.exp(-((rim_dist - 1.0) ** 2) * 3.0) * eye_recess * 0.3
+                rim_ring = np.exp(-((rim_dist - 1.0) ** 2) * 3.0) * eye_recess * 0.4
                 sculpture = sculpture + rim_ring
 
             # --- MOUTH: Classical lip definition ---
@@ -295,21 +291,21 @@ class DepthRefiner:
                     # Lip separation crease
                     lip_dist = ((xx - mouth_cx) / max(mouth_rx * 1.2, 1)) ** 2 + \
                                ((yy - mouth_cy) / max(mouth_ry * 0.4, 1)) ** 2
-                    lip_crease = np.exp(-lip_dist * 2.5) * 0.05 * params.mouth_depth
+                    lip_crease = np.exp(-lip_dist * 2.5) * 0.07 * params.mouth_depth
                     sculpture = sculpture - lip_crease
 
                     # Upper lip — projects forward (classical Cupid's bow)
                     upper_cy = mouth_cy - mouth_ry * 0.6
                     upper_dist = ((xx - mouth_cx) / max(mouth_rx * 0.9, 1)) ** 2 + \
                                  ((yy - upper_cy) / max(mouth_ry * 0.5, 1)) ** 2
-                    upper_lip = np.exp(-upper_dist * 2.5) * 0.04 * params.mouth_depth
+                    upper_lip = np.exp(-upper_dist * 2.5) * 0.06 * params.mouth_depth
                     sculpture = sculpture + upper_lip
 
                     # Lower lip — subtle forward projection
                     lower_cy = mouth_cy + mouth_ry * 0.4
                     lower_dist = ((xx - mouth_cx) / max(mouth_rx * 0.85, 1)) ** 2 + \
                                  ((yy - lower_cy) / max(mouth_ry * 0.45, 1)) ** 2
-                    lower_lip = np.exp(-lower_dist * 2.5) * 0.025 * params.mouth_depth
+                    lower_lip = np.exp(-lower_dist * 2.5) * 0.04 * params.mouth_depth
                     sculpture = sculpture + lower_lip
 
                     # Philtrum — subtle vertical groove above upper lip
@@ -327,9 +323,9 @@ class DepthRefiner:
                 cheek_smooth = ndimage.gaussian_filter(cheek_mask, sigma=22)
                 cheek_smooth = cheek_smooth / max(cheek_smooth.max(), 1e-6)
                 # More pronounced cheekbone projection
-                sculpture = sculpture + cheek_smooth * 0.08 * params.cheek_volume
+                sculpture = sculpture + cheek_smooth * 0.12 * params.cheek_volume
 
-                # Add slight hollow below the cheekbone for definition
+                # Hollow below the cheekbone for strong bone structure definition
                 cheek_rows = np.where(cheek_mask.sum(axis=1) > 0)[0]
                 if len(cheek_rows) > 5:
                     lower_cheek = cheek_mask.copy()
@@ -337,7 +333,7 @@ class DepthRefiner:
                     lower_cheek[:mid_row, :] = 0
                     lower_smooth = ndimage.gaussian_filter(lower_cheek.astype(np.float64), sigma=15)
                     lower_smooth = lower_smooth / max(lower_smooth.max(), 1e-6)
-                    sculpture = sculpture - lower_smooth * 0.025 * params.cheek_volume
+                    sculpture = sculpture - lower_smooth * 0.05 * params.cheek_volume
 
             # --- FOREHEAD: Smooth dome curvature ---
             if masks.forehead.sum() > 10:
@@ -345,13 +341,13 @@ class DepthRefiner:
                 forehead_smooth = forehead_smooth / max(forehead_smooth.max(), 1e-6)
                 # Broader, smoother dome
                 forehead_smooth = forehead_smooth ** 0.8
-                sculpture = sculpture + forehead_smooth * 0.06 * params.forehead_roundness
+                sculpture = sculpture + forehead_smooth * 0.09 * params.forehead_roundness
 
             # --- CHIN/JAW: Clean definition ---
             if masks.chin.sum() > 10:
                 chin_smooth = ndimage.gaussian_filter(masks.chin, sigma=15)
                 chin_smooth = chin_smooth / max(chin_smooth.max(), 1e-6)
-                sculpture = sculpture + chin_smooth * 0.05 * params.jaw_definition
+                sculpture = sculpture + chin_smooth * 0.07 * params.jaw_definition
 
         return sculpture
 
