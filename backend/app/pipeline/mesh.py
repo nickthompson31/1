@@ -12,6 +12,7 @@ Output is a binary STL file.
 
 import io
 import numpy as np
+import stl
 from stl import mesh as stl_mesh
 from scipy import ndimage
 
@@ -281,12 +282,12 @@ class MeshGenerator:
     ):
         """Save mesh to STL file."""
         if binary:
-            mesh.save(filepath, mode=stl_mesh.Mode.BINARY)
+            mesh.save(filepath, mode=stl.Mode.BINARY)
         else:
-            mesh.save(filepath, mode=stl_mesh.Mode.ASCII)
+            mesh.save(filepath, mode=stl.Mode.ASCII)
 
     def to_bytes(self, mesh: stl_mesh.Mesh) -> bytes:
         """Export mesh to STL bytes (for API responses)."""
         buf = io.BytesIO()
-        mesh.save("output.stl", fh=buf, mode=stl_mesh.Mode.BINARY)
+        mesh.save("output.stl", fh=buf, mode=stl.Mode.BINARY)
         return buf.getvalue()

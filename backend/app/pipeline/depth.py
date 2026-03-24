@@ -16,10 +16,12 @@ from PIL import Image
 class DepthEstimator:
     """Monocular depth estimation using MiDaS v3.1."""
 
-    # Model configs: name -> (model_type, transform_type)
+    # Model configs: name -> (model_type, transform_key)
+    # DPT_Hybrid is a good balance of speed vs quality for preview
+    # DPT_Large is the highest quality single-image depth model
     MODELS = {
-        "preview": ("DPT_Small", "small"),
-        "final": ("DPT_Large", "dpt_large"),
+        "preview": ("DPT_Hybrid", "dpt_transform"),
+        "final": ("DPT_Large", "dpt_transform"),
     }
 
     def __init__(self):
@@ -42,10 +44,8 @@ class DepthEstimator:
         midas_transforms = torch.hub.load(
             "intel-isl/MiDaS", "transforms", trust_repo=True
         )
-        if quality == "preview":
-            self._transforms[quality] = midas_transforms.small_transform
-        else:
-            self._transforms[quality] = midas_transforms.dpt_transform
+        transform_key = self.MODELS[quality][1]
+        self._transforms[quality] = getattr(midas_transforms, transform_key)
 
     def estimate(
         self,

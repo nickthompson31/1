@@ -1,16 +1,24 @@
 """
-Face detection and landmark extraction using MediaPipe.
+Face detection and landmark extraction using MediaPipe Tasks API.
 
 Provides 478-point face mesh landmarks for precise facial region segmentation.
 This enables region-specific depth treatment — the core of our "anti-creepy" pipeline.
 """
 
+import os
 import numpy as np
 from dataclasses import dataclass
+from pathlib import Path
 from PIL import Image
 
 import cv2
 import mediapipe as mp
+from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python.vision import (
+    FaceLandmarker,
+    FaceLandmarkerOptions,
+    RunningMode,
+)
 
 
 @dataclass
@@ -37,30 +45,20 @@ class FaceRegionMasks:
 class FaceData:
     """Complete face analysis results."""
 
-    landmarks: np.ndarray  # (478, 2) normalized landmark coords
-    pixel_landmarks: np.ndarray  # (478, 2) pixel coordinates
+    landmarks: np.ndarray  # (N, 2) normalized landmark coords
+    pixel_landmarks: np.ndarray  # (N, 2) pixel coordinates
     region_masks: FaceRegionMasks
     bounding_box: tuple[int, int, int, int]  # x, y, w, h
     confidence: float
 
 
-# MediaPipe Face Mesh landmark index groups
-# Reference: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
+# MediaPipe Face Mesh landmark index groups (478-point mesh)
+# These indices are stable across MediaPipe versions
 LANDMARK_REGIONS = {
     "face_outline": [
         10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
         397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
         172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
-    ],
-    "left_eye": [
-        # Left eye contour (from viewer's perspective)
-        263, 249, 390, 373, 374, 380, 381, 382, 362,
-        398, 384, 385, 386, 387, 388, 466, 263,
-    ],
-    "right_eye": [
-        # Right eye contour
-        33, 7, 163, 144, 145, 153, 154, 155, 133,
-        173, 157, 158, 159, 160, 161, 246, 33,
     ],
     "left_eye_wide": [
         # Wider region around left eye (for depth blending)
@@ -80,56 +78,63 @@ LANDMARK_REGIONS = {
         75, 60, 20, 238, 239, 241, 125, 44, 237,
         79, 218, 237, 44, 125, 141, 235, 168,
     ],
-    "mouth": [
-        # Outer lip contour
-        61, 146, 91, 181, 84, 17, 314, 405, 321, 375,
-        291, 409, 270, 269, 267, 0, 164, 2, 94, 19,
-        1, 4, 5, 195, 197, 6, 168,  # bridge connection
-        78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
-        308, 415, 310, 311, 312, 13, 82, 81, 80, 191, 78,
-    ],
     "mouth_tight": [
         # Just the lips area
         61, 146, 91, 181, 84, 17, 314, 405, 321, 375,
         291, 308, 324, 318, 402, 317, 14, 87, 178, 88,
         95, 78, 191, 80, 81, 82, 13, 312, 311, 310, 415,
-        308, 291, 375, 321, 405, 314, 17, 84, 181, 91,
-        146, 61,
-    ],
-    "forehead": [
-        # Upper face area
-        10, 338, 297, 332, 284, 251, 389, 356, 454,
-        323, 361, 288, 397, 365, 379, 378, 400, 377,
-        152, 148, 176, 149, 150, 136, 172, 58, 132,
-        93, 234, 127, 162, 21, 54, 103, 67, 109, 10,
     ],
 }
+
+# Default model path — relative to this file's parent (backend/)
+_DEFAULT_MODEL_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "models"
+    / "face_landmarker_v2_with_blendshapes.task"
+)
 
 
 class FaceDetector:
     """Detects faces and extracts landmark-based region masks."""
 
-    def __init__(self):
-        self._face_mesh = None
+    def __init__(self, model_path: str | None = None):
+        self._landmarker: FaceLandmarker | None = None
+        self._model_path = model_path or str(_DEFAULT_MODEL_PATH)
 
     def _init_mediapipe(self):
-        if self._face_mesh is not None:
+        if self._landmarker is not None:
             return
-        self._face_mesh = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=4,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
+
+        if not os.path.exists(self._model_path):
+            raise FileNotFoundError(
+                f"Face landmarker model not found at: {self._model_path}\n"
+                "Download it from: https://storage.googleapis.com/mediapipe-models/"
+                "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            )
+
+        options = FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=self._model_path),
+            running_mode=RunningMode.IMAGE,
+            num_faces=4,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
             min_tracking_confidence=0.5,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
         )
+        self._landmarker = FaceLandmarker.create_from_options(options)
 
     def _create_polygon_mask(
         self, landmarks_px: np.ndarray, indices: list[int], shape: tuple[int, int]
     ) -> np.ndarray:
         """Create a filled polygon mask from landmark indices."""
-        h, w = shape
-        points = landmarks_px[indices].astype(np.int32)
-        mask = np.zeros((h, w), dtype=np.float32)
+        # Filter out indices that are beyond our landmark count
+        valid_indices = [i for i in indices if i < len(landmarks_px)]
+        if len(valid_indices) < 3:
+            return np.zeros(shape, dtype=np.float32)
+
+        points = landmarks_px[valid_indices].astype(np.int32)
+        mask = np.zeros(shape, dtype=np.float32)
         cv2.fillPoly(mask, [points], 1.0)
         return mask
 
@@ -155,14 +160,21 @@ class FaceDetector:
             landmarks_px, LANDMARK_REGIONS["mouth_tight"], shape
         )
 
-        # Forehead: face outline minus eyes/nose/mouth, upper half
+        # Forehead: upper part of face outline, above nose bridge
         forehead = face_outline.copy()
-        mid_y = int(landmarks_px[LANDMARK_REGIONS["nose"][0], 1])
-        forehead[mid_y:, :] = 0
+        nose_indices = [i for i in LANDMARK_REGIONS["nose"] if i < len(landmarks_px)]
+        if nose_indices:
+            mid_y = int(landmarks_px[nose_indices[0], 1])
+            forehead[mid_y:, :] = 0
         forehead = np.maximum(forehead - left_eye - right_eye, 0)
 
         # Cheeks: face area between eyes and mouth, left/right of nose
-        center_x = int(np.mean(landmarks_px[LANDMARK_REGIONS["nose"], 0]))
+        nose_x_indices = [i for i in LANDMARK_REGIONS["nose"] if i < len(landmarks_px)]
+        if nose_x_indices:
+            center_x = int(np.mean(landmarks_px[nose_x_indices, 0]))
+        else:
+            center_x = w // 2
+
         cheek_base = face_outline.copy()
         cheek_base = np.maximum(
             cheek_base - left_eye - right_eye - nose - mouth - forehead, 0
@@ -173,7 +185,11 @@ class FaceDetector:
         right_cheek[:, center_x:] = 0
 
         # Chin: lower part of face below mouth
-        chin_y = int(np.max(landmarks_px[LANDMARK_REGIONS["mouth_tight"], 1]))
+        mouth_indices = [i for i in LANDMARK_REGIONS["mouth_tight"] if i < len(landmarks_px)]
+        if mouth_indices:
+            chin_y = int(np.max(landmarks_px[mouth_indices, 1]))
+        else:
+            chin_y = h * 3 // 4
         chin = face_outline.copy()
         chin[:chin_y, :] = 0
         chin = np.maximum(chin - mouth, 0)
@@ -210,16 +226,19 @@ class FaceDetector:
         img_np = np.array(image)
         h, w = img_np.shape[:2]
 
-        results = self._face_mesh.process(img_np)
+        # Convert to MediaPipe Image
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_np)
 
-        if not results.multi_face_landmarks:
+        result = self._landmarker.detect(mp_image)
+
+        if not result.face_landmarks:
             return []
 
         faces = []
-        for face_landmarks in results.multi_face_landmarks:
-            # Extract normalized landmarks
+        for face_landmarks in result.face_landmarks:
+            # Extract normalized landmarks (x, y)
             landmarks = np.array(
-                [(lm.x, lm.y) for lm in face_landmarks.landmark],
+                [(lm.x, lm.y) for lm in face_landmarks],
                 dtype=np.float32,
             )
 
@@ -238,8 +257,8 @@ class FaceDetector:
             # Create region masks
             region_masks = self._create_region_masks(pixel_landmarks, (h, w))
 
-            # Confidence: use average visibility/presence if available
-            confidence = 0.9  # MediaPipe doesn't expose per-face confidence easily
+            # Confidence from detection
+            confidence = 0.9
 
             faces.append(
                 FaceData(
