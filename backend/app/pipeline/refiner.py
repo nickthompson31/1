@@ -150,6 +150,16 @@ class DepthRefiner:
 
             h, w = depth_map.shape
 
+            # --- FACE DOME: Overall convex projection ---
+            # This is what makes the face PROJECT OUT from the background
+            # Without this, the face looks flat/sunken
+            face_dome = ndimage.gaussian_filter(masks.face_outline, sigma=25)
+            face_dome = face_dome / max(face_dome.max(), 1e-6)
+            # Raise the dome shape — parabolic curve, highest at center
+            face_dome = face_dome ** 0.7  # Broader dome shape
+            dome_height = 0.15 * params.feature_strength
+            sculpture = sculpture + face_dome * dome_height
+
             # --- NOSE: Strong central projection ---
             nose_boost = 0.30 * params.nose_projection
             # Use nose landmarks to find the ridge line
@@ -179,7 +189,7 @@ class DepthRefiner:
                 sculpture = sculpture + nose_mound + tip_peak
 
             # --- EYES: Concave sockets with brow ridge ---
-            eye_recess = 0.08 + 0.12 * params.eye_depth  # 0.08-0.20
+            eye_recess = 0.04 + 0.06 * params.eye_depth  # 0.04-0.10 (subtle!)
             for eye_indices_name in ["left_eye", "right_eye"]:
                 eye_mask = getattr(masks, eye_indices_name)
                 if eye_mask.sum() < 10:
@@ -281,8 +291,9 @@ class DepthRefiner:
         if face_range < 0.01:
             return result
 
-        # Target: face features span 0.3-1.0 of depth range
-        target_min = 0.30
+        # Target: face features span 0.45-1.0 of depth range
+        # Higher min = face projects MORE above background
+        target_min = 0.45
         target_max = 1.0
         scale = (target_max - target_min) / face_range
         stretched = target_min + (depth - face_min) * scale
