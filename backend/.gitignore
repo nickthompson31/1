@@ -1,3 +1,5 @@
 models/
 __pycache__/
 *.pyc
+test_images/
+test_output/
