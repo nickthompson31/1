@@ -1,0 +1,28 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Image processing
+Pillow==11.1.0
+numpy==1.26.4
+scipy==1.14.1
+opencv-python-headless==4.10.0.84
+
+# AI / ML
+torch==2.5.1
+torchvision==0.20.1
+timm==1.0.12
+
+# Face detection
+mediapipe==0.10.20
+
+# 3D mesh / STL
+numpy-stl==3.1.2
+trimesh==4.5.3
+
+# Background removal
+rembg==2.0.62
+
+# CORS
+pydantic==2.10.4
