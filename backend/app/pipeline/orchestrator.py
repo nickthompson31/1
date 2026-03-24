@@ -128,7 +128,7 @@ class PortraitPipeline:
         processed_image, bg_mask = self.preprocessor.process(
             image,
             remove_background=remove_background,
-            max_dimension=768 if quality == "preview" else 1024,
+            max_dimension=1024 if quality == "preview" else 1536,
         )
         timings["preprocessing"] = time.time() - t0
 
@@ -139,7 +139,7 @@ class PortraitPipeline:
 
         # --- Stage 3: Depth Estimation ---
         t0 = time.time()
-        target_size = 384 if quality == "preview" else None
+        target_size = 518 if quality == "preview" else None
         raw_depth = self.depth_estimator.estimate(
             processed_image,
             quality=quality,

@@ -79,34 +79,40 @@ class DepthRefiner:
         # Step 1: Create geometric face sculpture from landmarks
         sculpture = self._build_face_sculpture(depth_map, faces, params)
 
-        # Step 2: Blend sculpture with AI depth
-        # The sculpture provides the facial feature structure,
-        # the AI depth provides the overall shape and non-face detail
         face_mask_soft = ndimage.gaussian_filter(face_mask, sigma=10)
         face_mask_soft = np.clip(face_mask_soft, 0, 1)
 
-        blend_strength = 0.7 * params.feature_strength  # How much sculpture vs AI depth
-        refined = (
-            depth_map * (1 - face_mask_soft * blend_strength)
-            + sculpture * face_mask_soft * blend_strength
-        )
+        # Step 2: Decompose AI depth into low-freq shape + high-freq detail
+        # Low-freq = overall face dome shape (from AI)
+        # High-freq = wrinkles, skin texture, hair strands, pores (from AI)
+        ai_low = ndimage.gaussian_filter(depth_map, sigma=6.0)
+        ai_detail = depth_map - ai_low  # This is the precious fine detail
 
-        # Step 3: Add back high-frequency detail from the AI depth
-        detail = depth_map - ndimage.gaussian_filter(depth_map, sigma=2.0)
-        refined = refined + detail * params.detail_level * face_mask_soft
+        # Step 3: Decompose sculpture similarly
+        sculpt_low = ndimage.gaussian_filter(sculpture, sigma=6.0)
 
-        # Step 4: Smooth background
+        # Step 4: Combine: sculpture's low-freq structure + AI's fine detail
+        # The sculpture provides nose ridge, eye sockets, brow ridges
+        # The AI provides wrinkles, texture, hair, likeness
+        blend = params.feature_strength * 0.7
+        combined_low = ai_low * (1 - face_mask_soft * blend) + sculpt_low * face_mask_soft * blend
+
+        # Add back ALL the AI fine detail — this is what gives us texture
+        detail_strength = 0.5 + params.detail_level * 1.5  # 0.5-2.0x
+        refined = combined_low + ai_detail * detail_strength
+
+        # Step 5: Smooth background
         bg_smoothed = ndimage.gaussian_filter(refined, sigma=params.background_smoothing)
         refined = refined * face_mask_soft + bg_smoothed * (1 - face_mask_soft)
 
-        # Step 5: Redistribute face depth for visible relief
+        # Step 6: Redistribute face depth for visible relief
         refined = self._redistribute_face_depth(refined, faces)
 
-        # Step 6: Final cleanup smoothing
+        # Step 7: Very light cleanup — just enough to blend sculpture edges
         if params.smoothing > 0:
-            sigma = 0.5 + params.smoothing * 1.5
+            sigma = 0.3 + params.smoothing * 0.7  # Much lighter than before
             smoothed = ndimage.gaussian_filter(refined, sigma=sigma)
-            refined = refined * (1 - face_mask_soft * 0.3) + smoothed * face_mask_soft * 0.3
+            refined = refined * (1 - face_mask_soft * 0.15) + smoothed * face_mask_soft * 0.15
 
         return self._normalize(refined)
 
