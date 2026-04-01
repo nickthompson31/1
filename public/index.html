@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Depth &amp; Surface Normal Extraction</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        header {
+            padding: 24px 32px;
+            border-bottom: 1px solid #222;
+        }
+        header h1 { font-size: 22px; font-weight: 600; }
+        header p { font-size: 13px; color: #888; margin-top: 4px; }
+
+        .controls {
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #222;
+        }
+        .upload-btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .upload-btn:hover { background: #4338ca; }
+        .upload-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        #fileInput { display: none; }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .slider-group label {
+            font-size: 13px;
+            color: #aaa;
+            white-space: nowrap;
+        }
+        .slider-group input[type="range"] {
+            width: 140px;
+            accent-color: #4f46e5;
+        }
+        .slider-group .val {
+            font-size: 13px;
+            color: #ccc;
+            min-width: 30px;
+        }
+
+        #status {
+            font-size: 13px;
+            color: #888;
+            margin-left: auto;
+        }
+        #status.loading { color: #f59e0b; }
+        #status.done { color: #22c55e; }
+        #status.error { color: #ef4444; }
+
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            padding: 24px 32px;
+        }
+        .panel {
+            background: #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #222;
+        }
+        .panel h3 {
+            font-size: 12px;
+            font-weight: 500;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 12px 16px;
+            border-bottom: 1px solid #222;
+        }
+        .panel canvas, .panel img {
+            width: 100%;
+            display: block;
+            background: #111;
+        }
+        .panel .empty {
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #444;
+            font-size: 13px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 3px;
+            background: #222;
+            position: relative;
+            display: none;
+        }
+        .progress-bar.active { display: block; }
+        .progress-bar .fill {
+            height: 100%;
+            background: #4f46e5;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        @media (max-width: 900px) {
+            .panels { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Depth &amp; Surface Normal Extraction</h1>
+        <p>Upload a 2D image &rarr; AI depth extraction &rarr; gradient-based surface normals. Runs entirely in your browser.</p>
+    </header>
+
+    <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+
+    <div class="controls">
+        <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
+            Upload Image
+        </button>
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="slider-group">
+            <label for="strengthSlider">Normal Strength</label>
+            <input type="range" id="strengthSlider" min="1" max="20" step="0.5" value="5">
+            <span class="val" id="strengthVal">5.0x</span>
+        </div>
+
+        <span id="status">Ready — load an image to begin</span>
+    </div>
+
+    <div class="panels">
+        <div class="panel">
+            <h3>1. Original Image</h3>
+            <div id="originalPanel"><div class="empty">No image loaded</div></div>
+        </div>
+        <div class="panel">
+            <h3>2. AI Extracted Global Depth</h3>
+            <div id="depthPanel"><div class="empty">Waiting for input</div></div>
+        </div>
+        <div class="panel">
+            <h3>3. Derived Surface Normals</h3>
+            <div id="normalPanel"><div class="empty">Waiting for input</div></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3';
+
+        // Allow local model caching in the browser
+        env.allowLocalModels = false;
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const status = document.getElementById('status');
+        const strengthSlider = document.getElementById('strengthSlider');
+        const strengthVal = document.getElementById('strengthVal');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+
+        let depthEstimator = null;
+        let currentDepthData = null;
+        let currentWidth = 0;
+        let currentHeight = 0;
+
+        strengthSlider.addEventListener('input', () => {
+            strengthVal.textContent = parseFloat(strengthSlider.value).toFixed(1) + 'x';
+            if (currentDepthData) {
+                renderNormals(currentDepthData, currentWidth, currentHeight, parseFloat(strengthSlider.value));
+            }
+        });
+
+        function setStatus(msg, cls) {
+            status.textContent = msg;
+            status.className = cls || '';
+        }
+
+        function showProgress(pct) {
+            progressBar.classList.add('active');
+            progressFill.style.width = pct + '%';
+        }
+
+        function hideProgress() {
+            progressBar.classList.remove('active');
+            progressFill.style.width = '0%';
+        }
+
+        async function loadModel() {
+            if (depthEstimator) return depthEstimator;
+            setStatus('Loading AI model (first run downloads ~40MB)...', 'loading');
+            showProgress(10);
+
+            depthEstimator = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+                device: 'webgpu' in navigator.gpu ? 'webgpu' : 'wasm',
+                progress_callback: (p) => {
+                    if (p.status === 'progress' && p.total) {
+                        const pct = Math.round((p.loaded / p.total) * 80) + 10;
+                        showProgress(pct);
+                    }
+                }
+            });
+
+            showProgress(90);
+            return depthEstimator;
+        }
+
+        function renderNormals(depthData, width, height, strength) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(width, height);
+
+            // Compute gradients and normals
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+
+                    // Central differences for gradient
+                    const left = x > 0 ? depthData[y * width + (x - 1)] : depthData[idx];
+                    const right = x < width - 1 ? depthData[y * width + (x + 1)] : depthData[idx];
+                    const up = y > 0 ? depthData[(y - 1) * width + x] : depthData[idx];
+                    const down = y < height - 1 ? depthData[(y + 1) * width + x] : depthData[idx];
+
+                    const dzdx = (right - left) * 0.5 * strength;
+                    const dzdy = (down - up) * 0.5 * strength;
+
+                    // Normal vector [-dzdx, -dzdy, 1], then normalize
+                    const nx = -dzdx;
+                    const ny = -dzdy;
+                    const nz = 1.0;
+                    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+                    // Map from [-1,1] to [0,255]
+                    const px = idx * 4;
+                    imgData.data[px]     = Math.round(((nx / len) + 1.0) * 0.5 * 255);
+                    imgData.data[px + 1] = Math.round(((ny / len) + 1.0) * 0.5 * 255);
+                    imgData.data[px + 2] = Math.round(((nz / len) + 1.0) * 0.5 * 255);
+                    imgData.data[px + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            const normalPanel = document.getElementById('normalPanel');
+            normalPanel.innerHTML = '';
+            normalPanel.appendChild(canvas);
+        }
+
+        function renderDepth(depthData, width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(width, height);
+
+            // Inferno-inspired colormap
+            const inferno = [
+                [0, 0, 4], [12, 7, 35], [42, 4, 80], [81, 2, 101],
+                [120, 9, 99], [156, 23, 79], [189, 55, 50], [213, 96, 28],
+                [231, 141, 10], [240, 189, 18], [248, 230, 92], [252, 255, 164]
+            ];
+
+            for (let i = 0; i < depthData.length; i++) {
+                const t = Math.max(0, Math.min(1, depthData[i]));
+                const seg = t * (inferno.length - 1);
+                const lo = Math.floor(seg);
+                const hi = Math.min(lo + 1, inferno.length - 1);
+                const f = seg - lo;
+
+                const px = i * 4;
+                imgData.data[px]     = Math.round(inferno[lo][0] + (inferno[hi][0] - inferno[lo][0]) * f);
+                imgData.data[px + 1] = Math.round(inferno[lo][1] + (inferno[hi][1] - inferno[lo][1]) * f);
+                imgData.data[px + 2] = Math.round(inferno[lo][2] + (inferno[hi][2] - inferno[lo][2]) * f);
+                imgData.data[px + 3] = 255;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+            const depthPanel = document.getElementById('depthPanel');
+            depthPanel.innerHTML = '';
+            depthPanel.appendChild(canvas);
+        }
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show original image
+            const imgURL = URL.createObjectURL(file);
+            const originalPanel = document.getElementById('originalPanel');
+            originalPanel.innerHTML = `<img src="${imgURL}" alt="Original">`;
+
+            uploadBtn.disabled = true;
+
+            try {
+                // Load model
+                const estimator = await loadModel();
+
+                setStatus('Extracting volumetric depth...', 'loading');
+                showProgress(92);
+
+                // Run depth estimation
+                const img = new Image();
+                img.src = imgURL;
+                await new Promise(r => img.onload = r);
+
+                const result = await estimator(imgURL);
+                const depth = result.depth;
+                const depthTensor = result.predicted_depth;
+                const width = depth.width;
+                const height = depth.height;
+
+                // Get raw depth values and normalize to 0-1
+                const rawDepth = depthTensor.data;
+                let dMin = Infinity, dMax = -Infinity;
+                for (let i = 0; i < rawDepth.length; i++) {
+                    if (rawDepth[i] < dMin) dMin = rawDepth[i];
+                    if (rawDepth[i] > dMax) dMax = rawDepth[i];
+                }
+                const depthNorm = new Float32Array(rawDepth.length);
+                const range = dMax - dMin || 1;
+                for (let i = 0; i < rawDepth.length; i++) {
+                    depthNorm[i] = (rawDepth[i] - dMin) / range;
+                }
+
+                currentDepthData = depthNorm;
+                currentWidth = width;
+                currentHeight = height;
+
+                showProgress(96);
+                setStatus('Computing surface normals...', 'loading');
+
+                renderDepth(depthNorm, width, height);
+                renderNormals(depthNorm, width, height, parseFloat(strengthSlider.value));
+
+                showProgress(100);
+                setStatus(`Done — ${width}×${height}, depth range ${dMin.toFixed(2)}–${dMax.toFixed(2)}`, 'done');
+                setTimeout(hideProgress, 500);
+
+            } catch (err) {
+                console.error(err);
+                setStatus('Error: ' + err.message, 'error');
+                hideProgress();
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
