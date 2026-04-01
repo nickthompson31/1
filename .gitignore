@@ -1,0 +1,4 @@
+# Generated output files
+*.npy
+depth_normal_output.png
+sample_input.png
