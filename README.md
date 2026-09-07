@@ -1,101 +1,118 @@
-# Sunny's Shine Catch
+# ShineWater Kids Games
 
-A kids' arcade game for the ShineWater site. One HTML file, zero dependencies,
-zero build step, no external assets. Every sprite is drawn on canvas and every
-sound is generated in the browser.
+Two browser arcade games for the ShineWater site. Each is one HTML file with
+zero dependencies, zero build step, and no external assets — sprites are drawn
+on canvas, sounds are synthesized in the browser. Drop either on any static host
+or upload it to Shopify Files and iframe it.
 
-**File:** `game/index.html` (~32 KB, single file)
+| Game | File | Genre | Size |
+|---|---|---|---|
+| **Sugar Kong — Rescue the Sun** | `games/sugar-kong/index.html` | Donkey Kong-style climber | ~39 KB |
+| **Sunny's Shine Catch** | `games/shine-catch/index.html` | Catch-and-dodge | ~32 KB |
 
-## Play
+Both share the same brand cast: **Sunny** (the sun), the ShineWater bottle, sugar
+and soda as the villains, and general vitamin-D facts on the result screens.
 
-Catch sun drops, water drops, and rare vitamin D stars. Dodge soda cans and
-fizzy candy. Three lives.
+---
+
+## Sugar Kong — Rescue the Sun
+
+Sugar Kong hauled Sunny to the top of the tower. You're a kid in a ShineWater
+shirt. Climb six floors of girders and ladders, dodge or jump the rolling sugar
+barrels, and reach the cage.
 
 | Mechanic | Effect |
 |---|---|
-| Sun drop | +10 |
-| Water drop | +5, fills the Shine Meter fastest |
-| Vitamin D star | +50 |
-| Combo | +1 multiplier every 5 clean catches, caps at 5x |
-| Shine Meter full | **SHINE MODE** — 7s of 2x points plus a magnet that pulls good drops in |
-| Level | Every 350 points: faster drops, more hazards |
-| Soda / candy | −1 life, combo reset |
+| Jump over a barrel | +100 |
+| Hammer pickup (2 per floor) | 6s of smashing barrels, +300 each — but no ladders while you hold it |
+| ShineWater bottle pickup (3 per floor) | +500 |
+| Reach Sunny | Floor cleared, remaining Bonus added to score |
+| Bonus | Starts at 5,000 per floor, ticks down 100 every 0.9s |
+| Next floor | Faster barrels, quicker throws; from floor 2, purple "wild" barrels always take ladders |
+| Barrel hit / fall | −1 life, respawn at the bottom. 3 lives |
 
-Ranks at game over run Sun Sprout → Drop Catcher → Ray Runner → Shine Scout →
-Sunbeam Star → Vitamin D Hero → Legend of Light. Best score persists in
-`localStorage`.
+Barrels roll toward the open end of each girder (marked with a gold cap), drop
+to the next one, and randomly take ladders down. Kong winds up before each throw
+so you can read it.
 
-## Controls
+**Controls**
+- Keyboard: ← → or A/D walk, ↑ ↓ or W/S climb, Space / Z jump, Esc pause, M mute
+- Touch: on-screen d-pad + JUMP button (shown only on touch devices)
 
-- **Touch / mouse:** drag anywhere to move the bottle
-- **Keyboard:** ← → or A / D to move, Space or Enter to start, Esc to pause, M to mute
+Ranks: Ground Floor Rookie → Ladder Legs → Barrel Dodger → Hammer Hand →
+Tower Climber → Kong Wrangler → Sun Rescuer.
 
-Portrait-locked 2:3 board that scales to any screen, retina-aware, pauses on tab
-blur so it never eats battery in a background tab.
+## Sunny's Shine Catch
 
-## Hosting it
+Move the ShineWater bottle to catch sun drops (+10), water drops (+5), and rare
+vitamin D stars (+50). Dodge soda and candy. Combo multiplier caps at 5x. Fill
+the Shine Meter for 7s of **SHINE MODE** (2x points + magnet). Three lives.
+
+**Controls:** drag anywhere, or ← → / A D. Space starts, Esc pauses, M mutes.
+
+---
+
+## Hosting
 
 ### Shopify (what we're on)
 
-1. **Settings → Files → Upload** `game/index.html`. Copy the CDN URL Shopify gives you.
-2. **Online Store → Pages → Add page**, title it "Sunny's Shine Catch".
-3. Switch the content editor to `<>` (HTML) and paste:
+1. **Settings → Files → Upload** the game's `index.html`. Copy the CDN URL.
+2. **Online Store → Pages → Add page**, name it after the game.
+3. Switch the editor to `<>` (HTML) and paste:
 
 ```html
 <div style="max-width:560px;margin:0 auto;">
   <iframe
-    src="PASTE_YOUR_SHOPIFY_FILE_URL_HERE"
-    title="Sunny's Shine Catch"
-    style="width:100%;aspect-ratio:2/3;border:0;border-radius:22px;display:block;"
+    src="PASTE_SHOPIFY_FILE_URL_HERE"
+    title="Sugar Kong — Rescue the Sun"
+    style="width:100%;aspect-ratio:0.62;border:0;border-radius:22px;display:block;"
     loading="lazy"></iframe>
 </div>
 ```
 
-Shopify serves uploaded files from its CDN, so the game loads fast and costs
-nothing in theme weight.
+Use `aspect-ratio:2/3` for Shine Catch, `aspect-ratio:0.62` for Sugar Kong (its
+touch control strip needs the extra height on phones).
 
 ### Anywhere else
 
-Drop `index.html` on any static host — Netlify, Cloudflare Pages, S3, a folder
-on the existing server. It's one file with no server requirement. It also works
-straight off a USB stick or opened from disk, which is handy for trade shows and
-sampling events on a tablet.
+Any static host — Netlify, Cloudflare Pages, S3, a folder on the current server.
+They also run straight off a tablet with no internet, which is the play for
+sampling events and trade show booths.
 
 ## Configuration
 
-Top of the `<script>` block in `game/index.html`:
+Top of the `<script>` block in each file:
 
 ```js
 var CONFIG = {
-  storeUrl: "https://shinewater.com",   // where the CTA button points
+  storeUrl: "https://shinewater.com",   // where the CTA on the game-over card points
   ctaText:  "Get ShineWater →",
   lives: 3
 };
 ```
 
 Point `storeUrl` at a discount-code landing page and the game-over screen becomes
-a conversion surface instead of a dead end.
+a conversion surface.
 
-## Score hook (email capture / leaderboard)
+## Score hook (email capture / leaderboard / Klaviyo)
 
-When embedded in an iframe, the game posts its result to the parent page on every
-game over. Listen for it from the host page:
+Both games post their result to the parent page on game over:
 
 ```js
 window.addEventListener('message', function (e) {
   if (!e.data || e.data.type !== 'shinewater:gameover') return;
-  // e.data → { score, best, level, bestCombo }
-  // Show an email form: "Beat 1,500? Get 15% off." Fire an analytics event.
-  // Push it into Klaviyo as a custom event.
+  // Sugar Kong:   { game:'sugar-kong', score, best, floor }
+  // Shine Catch:  { score, best, level, bestCombo }
+  // Gate an email form on score. Fire a Klaviyo event. Hand out a coupon.
 });
 ```
-
-That's the hook for a "beat this score for a coupon" promo without touching the
-game code.
 
 ## Notes
 
 - No tracking, no cookies, no network calls. Safe for a page aimed at kids.
-- Audio only starts after the first tap, per browser autoplay rules.
-- Facts on the game-over screen are general sunshine/vitamin D statements, not
-  product claims — keep it that way if you edit them.
+- Best score and mute preference live in `localStorage` only.
+- Audio starts after the first tap, per browser autoplay rules.
+- The facts on the result screens are general sunshine/vitamin D statements, not
+  product claims. Keep it that way when editing.
+- `window.__sugarKong()` is a read-only peek used by the automated playtest.
+  Harmless in production; delete it if you'd rather not ship it.
