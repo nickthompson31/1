@@ -23,14 +23,14 @@
   @media (min-width:600px){ #stage{border-radius:22px} }
   canvas{display:block;width:100%;height:100%}
   .overlay{
-    position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    position:absolute;inset:0;display:none;flex-direction:column;overflow:auto;
     gap:14px;padding:26px;text-align:center;background:rgba(4,44,62,.72);backdrop-filter:blur(7px);
     animation:fade .25s ease both
   }
   .overlay.show{display:flex}
   @keyframes fade{from{opacity:0}to{opacity:1}}
   @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
-  .card{background:var(--white);border-radius:24px;padding:24px 22px;width:100%;max-width:330px;
+  .card{margin:auto;background:var(--white);border-radius:24px;padding:24px 22px;width:100%;max-width:330px;
         box-shadow:0 14px 0 rgba(0,0,0,.12);animation:pop .3s cubic-bezier(.2,1.4,.4,1) both}
   h1{margin:0 0 2px;font-size:clamp(26px,7.5vw,36px);line-height:1.02;letter-spacing:-.02em;color:var(--ink)}
   h1 span{display:block;font-size:.52em;letter-spacing:.22em;color:var(--sun-deep);margin-bottom:8px}
@@ -52,6 +52,7 @@
          padding:6px 14px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
   .howto{margin-top:14px;font-size:13px;color:#5A8399;line-height:1.6}
   .howto b{color:var(--ink)}
+  @media (max-height:460px){ .card{padding:12px 16px} .howto{display:none} p{margin-top:4px;font-size:13px} .btn{margin-top:10px;padding:11px} h1{font-size:24px} }
   .topbtns{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:5}
   .icon{width:38px;height:38px;border:0;border-radius:12px;background:rgba(255,255,255,.28);
         color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(4px)}

@@ -14,10 +14,11 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;margin:0;background:#0B0620;font-family:var(--font);color:#fff;overscroll-behavior:none}
   body{display:grid;place-items:center}
-  #stage{position:relative;width:min(100vw, calc(100dvh * 16 / 9));height:min(100dvh, calc(100vw * 9 / 16));
-    max-width:1100px;max-height:619px;overflow:hidden;background:#1B0F3F;box-shadow:0 24px 70px rgba(0,0,0,.6);
-    touch-action:none;user-select:none}
-  @media (min-width:1140px){ #stage{border-radius:22px} }
+  /* The stage takes whatever box it's given; the canvas letterboxes inside it.
+     A fixed 16:9 stage turned into a 200px strip in tall panels and hid the menu. */
+  #stage{position:relative;width:min(100vw,1100px);height:min(100dvh,619px);
+    overflow:hidden;background:#1B0F3F;box-shadow:0 24px 70px rgba(0,0,0,.6);touch-action:none;user-select:none}
+  @media (min-width:1140px) and (min-height:660px){ #stage{border-radius:22px} }
   canvas{display:block;width:100%;height:100%}
 
   /* touch zones: left slides, right jumps */
@@ -29,13 +30,17 @@
     background:rgba(0,0,0,.28);border-radius:999px;padding:6px 14px;pointer-events:none}
   .zone.on span{background:var(--sun);color:#3A2200}
 
-  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:18px;text-align:center;
+  .overlay{position:absolute;inset:0;display:none;padding:18px;text-align:center;overflow:auto;
     background:rgba(11,6,32,.8);backdrop-filter:blur(7px);z-index:4;animation:fade .22s ease both}
   .overlay.show{display:flex}
   @keyframes fade{from{opacity:0}to{opacity:1}}
   @keyframes pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
-  .card{background:#fff;color:var(--ink);border-radius:22px;padding:20px 22px;width:100%;max-width:400px;max-height:100%;overflow:auto;
+  /* margin:auto centers when the card fits and scrolls from the top when it doesn't */
+  .card{background:#fff;color:var(--ink);border-radius:22px;padding:20px 22px;width:100%;max-width:400px;margin:auto;
     box-shadow:0 12px 0 rgba(0,0,0,.28);animation:pop .28s cubic-bezier(.2,1.4,.4,1) both}
+  .rotate{display:none;margin-top:10px;font-size:12px;color:#8A81AE}
+  @media (orientation:portrait){ body.touch .rotate{display:block} }
+  @media (max-height:380px){ .card{padding:12px 16px} .keys{display:none} p{margin-top:4px;font-size:13px} .btn{margin-top:10px;padding:11px} }
   h1{margin:0;font-size:clamp(24px,4.4vw,34px);line-height:1;letter-spacing:-.025em}
   h1 span{display:block;font-size:.38em;letter-spacing:.24em;color:var(--sky-deep);margin-bottom:8px;font-weight:800}
   h2{margin:0 0 2px;font-size:clamp(21px,4vw,27px)}
@@ -81,6 +86,7 @@
         <div><b>Sun rays</b>collect 5 for Shine Mode</div>
       </div>
       <button class="btn" id="playBtn">RUN!</button>
+      <div class="rotate">Turn your phone sideways for the big screen.</div>
     </div>
   </div>
 
