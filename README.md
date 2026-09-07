@@ -1,12 +1,13 @@
 # ShineWater Kids Games
 
-Two browser arcade games for the ShineWater site. Each is one HTML file with
+Three browser arcade games for the ShineWater site. Each is one HTML file with
 zero dependencies, zero build step, and no external assets — sprites are drawn
 on canvas, sounds are synthesized in the browser. Drop either on any static host
 or upload it to Shopify Files and iframe it.
 
 | Game | File | Genre | Size |
 |---|---|---|---|
+| **Shine Run** | `games/shine-run/index.html` | Endless rooftop runner (landscape) | ~32 KB |
 | **Sugar Kong — Rescue the Sun** | `games/sugar-kong/index.html` | Donkey Kong-style climber | ~39 KB |
 | **Sunny's Shine Catch** | `games/shine-catch/index.html` | Catch-and-dodge | ~32 KB |
 
@@ -14,6 +15,30 @@ Both share the same brand cast: **Sunny** (the sun), the ShineWater bottle, suga
 and soda as the villains, and general vitamin-D facts on the result screens.
 
 ---
+
+## Shine Run
+
+Auto-scrolling rooftop dash. The kid runs; you jump and slide. Speed climbs
+from a jog to a sprint over the first couple of minutes. The sky runs a full
+day — sunrise, noon, sunset, night with a moon and lit windows — every ~1,200m,
+and Sunny arcs across it.
+
+| Mechanic | Effect |
+|---|---|
+| Soda can / sugar stack | Jump it. Hold jump for a higher arc, tap for a short hop |
+| Candy-floss cloud | Slide under it (standing hitbox is 56px, sliding is 28px) |
+| Rooftop gap | Jump it. Appears after 50m, widens with speed |
+| Slide in mid-air | Fast-fall — drop out of a jump early |
+| ShineWater bottle | +50, come in jump-shaped arcs of five |
+| Sun ray | Collect 5 for **Shine Mode**: 6s invincible, 1.25x speed, 2x score, magnet on pickups, obstacles smash for +100 |
+| Score | Distance x 0.1 + pickups |
+
+**Controls**
+- Keyboard: Space / ↑ / W jump, ↓ / Shift / S slide, Esc pause, M mute. Mouse click also jumps.
+- Touch: the screen splits into two zones — hold **left** to slide, tap **right** to jump. Labels show only on touch devices.
+
+Ranks: Rooftop Rookie → Puddle Jumper → Ledge Leaper → Skyline Sprinter →
+Sunrise Chaser → Shine Runner → Legend of Light.
 
 ## Sugar Kong — Rescue the Sun
 
@@ -70,8 +95,9 @@ the Shine Meter for 7s of **SHINE MODE** (2x points + magnet). Three lives.
 </div>
 ```
 
-Use `aspect-ratio:2/3` for Shine Catch, `aspect-ratio:0.62` for Sugar Kong (its
-touch control strip needs the extra height on phones).
+Aspect ratios per game: Shine Run `16/9` (bump `max-width` to 1100px), Shine
+Catch `2/3`, Sugar Kong `0.62` (its touch control strip needs the extra height
+on phones).
 
 ### Anywhere else
 
@@ -96,11 +122,12 @@ a conversion surface.
 
 ## Score hook (email capture / leaderboard / Klaviyo)
 
-Both games post their result to the parent page on game over:
+All three games post their result to the parent page on game over:
 
 ```js
 window.addEventListener('message', function (e) {
   if (!e.data || e.data.type !== 'shinewater:gameover') return;
+  // Shine Run:    { game:'shine-run', score, best, distance, bottles }
   // Sugar Kong:   { game:'sugar-kong', score, best, floor }
   // Shine Catch:  { score, best, level, bestCombo }
   // Gate an email form on score. Fire a Klaviyo event. Hand out a coupon.
@@ -114,5 +141,6 @@ window.addEventListener('message', function (e) {
 - Audio starts after the first tap, per browser autoplay rules.
 - The facts on the result screens are general sunshine/vitamin D statements, not
   product claims. Keep it that way when editing.
-- `window.__sugarKong()` is a read-only peek used by the automated playtest.
-  Harmless in production; delete it if you'd rather not ship it.
+- `window.__sugarKong()` / `window.__shineRun()` are read-only peeks used by the
+  automated playtests. Harmless in production; delete them if you'd rather not
+  ship them.
